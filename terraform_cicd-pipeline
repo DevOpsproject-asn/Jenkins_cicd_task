@@ -1,0 +1,54 @@
+pipeline {
+  agent any 
+     stages {
+	     stage ('Checkout SCM') {
+		   steps {
+		      checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'git', url: 'url']]])
+			}
+         }
+	     stage('Set terraform path') {
+	       steps {
+		     script {
+			    def tfHome = tool name: 'terraform'
+				env.PATH = "${tfHome}: ${env.PATH}"  
+				}
+			}
+		}
+		stage('terraform init') {
+		    steps {
+			   dir ("vpc") {
+			     script {
+				    withAWS(roleAccount: '510234566788', role:'jenkins_role', useNode: true) {
+					sh 'terraform init -no-color'
+					}
+				}
+			}
+		}
+		stage('terraform plan') {
+		     steps {
+			   dir ("vpc") {
+			     script {
+				    withAWS(roleAccount: '510234566788', role:'jenkins_role', useNode: true) {
+					sh 'terraform plan -no-color -out=plan.out'
+					}
+				}
+			}
+		}
+		stage('Waiting for Approvals') {
+		    steps{
+			  input('plan validate? please approve to create VPC Network in AWS?')
+			  }
+			}
+		}
+		stage('terraform Apply') {
+		     steps {
+			    dir ('VPC') {
+				  script {
+				    withAWS(roleAccount: '510234566788', role:'jenkins_role', useNode: true) {
+					sh 'terraform apply -no-color -auto-approve plan.out'
+					sh "terraform output"
+					}
+				}
+			}
+         }
+   }
